@@ -128,6 +128,14 @@ exports.createTestCase = async (req, res, next) => {
       post_condicion, tester_id
     ]);
     
+    // Registrar ejecución inicial en el historial
+    const execId = uuidv4();
+    await run(`
+      INSERT INTO test_case_executions (
+        id, test_case_id, estado, tester_id, fecha_ejecucion
+      ) VALUES (?, ?, 'pendiente', ?, datetime('now'))
+    `, [execId, id, tester_id]);
+
     const newTc = await get(`SELECT * FROM test_cases WHERE id = ?`, [id]);
     res.status(201).json(newTc);
   } catch (error) {
@@ -144,8 +152,11 @@ exports.updateTestCase = async (req, res, next) => {
       resultados_obtenidos, post_condicion, estado, fecha_ejecucion
     } = req.body;
     
-    const tc = await get(`SELECT id, estado FROM test_cases WHERE id = ? AND project_id = ?`, [id, projectId]);
+    const tc = await get(`SELECT id, estado, tester_id, resultados_obtenidos FROM test_cases WHERE id = ? AND project_id = ?`, [id, projectId]);
     if (!tc) return res.status(404).json({ error: 'Caso de prueba no encontrado' });
+
+    const oldEstado = tc.estado;
+    const newEstado = estado || tc.estado;
 
     await run(`
       UPDATE test_cases SET 
@@ -161,9 +172,25 @@ exports.updateTestCase = async (req, res, next) => {
       pasos ? JSON.stringify(pasos) : null, 
       resultados_esperados ? JSON.stringify(resultados_esperados) : null, 
       resultados_obtenidos ? JSON.stringify(resultados_obtenidos) : null,
-      post_condicion, estado || tc.estado, fecha_ejecucion,
+      post_condicion, newEstado, fecha_ejecucion || (newEstado !== oldEstado ? datetime('now') : null),
       id, projectId
     ]);
+
+    if (newEstado !== oldEstado) {
+      const execId = uuidv4();
+      await run(`
+        INSERT INTO test_case_executions (
+          id, test_case_id, estado, tester_id, resultados_obtenidos, observaciones, fecha_ejecucion
+        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [
+        execId, 
+        id, 
+        newEstado, 
+        tc.tester_id, 
+        resultados_obtenidos ? JSON.stringify(resultados_obtenidos) : tc.resultados_obtenidos, 
+        'Actualizado mediante formulario de edición'
+      ]);
+    }
     
     const updatedTc = await get(`SELECT * FROM test_cases WHERE id = ?`, [id]);
     res.json(updatedTc);
@@ -175,17 +202,65 @@ exports.updateTestCase = async (req, res, next) => {
 exports.updateEstado = async (req, res, next) => {
   try {
     const { id, projectId } = req.params;
-    const { estado } = req.body;
+    const { estado, tester_id, resultados_obtenidos, observaciones } = req.body;
     
-    const tc = await get(`SELECT id FROM test_cases WHERE id = ? AND project_id = ?`, [id, projectId]);
+    const tc = await get(`SELECT id, tester_id, resultados_obtenidos FROM test_cases WHERE id = ? AND project_id = ?`, [id, projectId]);
     if (!tc) return res.status(404).json({ error: 'Caso de prueba no encontrado' });
 
+    const actualTesterId = tester_id || tc.tester_id;
+    const finalResultados = resultados_obtenidos ? JSON.stringify(resultados_obtenidos) : tc.resultados_obtenidos;
+
     await run(`
-      UPDATE test_cases SET estado = ?, fecha_ejecucion = datetime('now'), actualizado_en = datetime('now')
+      UPDATE test_cases SET 
+        estado = ?, 
+        fecha_ejecucion = datetime('now'), 
+        actualizado_en = datetime('now'),
+        resultados_obtenidos = ?,
+        tester_id = ?
       WHERE id = ? AND project_id = ?
-    `, [estado, id, projectId]);
+    `, [estado, finalResultados, actualTesterId, id, projectId]);
+
+    const execId = uuidv4();
+    await run(`
+      INSERT INTO test_case_executions (
+        id, test_case_id, estado, tester_id, resultados_obtenidos, observaciones, fecha_ejecucion
+      ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `, [
+      execId, 
+      id, 
+      estado, 
+      actualTesterId, 
+      finalResultados, 
+      observaciones || null
+    ]);
     
-    res.json({ message: 'Estado actualizado', estado });
+    res.json({ message: 'Estado actualizado e historial registrado', estado });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getExecutionsByTestCaseId = async (req, res, next) => {
+  try {
+    const { id, projectId } = req.params;
+    
+    const tc = await get('SELECT id FROM test_cases WHERE id = ? AND project_id = ?', [id, projectId]);
+    if (!tc) return res.status(404).json({ error: 'Caso de prueba no encontrado' });
+
+    const executions = await query(`
+      SELECT e.*, u.nombre as tester_nombre
+      FROM test_case_executions e
+      LEFT JOIN users u ON e.tester_id = u.id
+      WHERE e.test_case_id = ?
+      ORDER BY e.fecha_ejecucion DESC
+    `, [id]);
+
+    const parsedExecutions = executions.map(exec => ({
+      ...exec,
+      resultados_obtenidos: exec.resultados_obtenidos ? JSON.parse(exec.resultados_obtenidos) : []
+    }));
+
+    res.json(parsedExecutions);
   } catch (error) {
     next(error);
   }

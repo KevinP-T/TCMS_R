@@ -7,6 +7,7 @@ const { testCaseSchema, estadoTestCaseSchema } = require('../schemas/testCase.sc
 // Se monta en /api/projects por lo que la ruta real recibe :projectId antes
 router.get('/:projectId/test-cases', testCasesController.getAllTestCases);
 router.get('/:projectId/test-cases/:id', testCasesController.getTestCaseById);
+router.get('/:projectId/test-cases/:id/executions', testCasesController.getExecutionsByTestCaseId);
 router.post('/:projectId/test-cases', validate(testCaseSchema), testCasesController.createTestCase);
 router.put('/:projectId/test-cases/:id', validate(testCaseSchema), testCasesController.updateTestCase);
 router.patch('/:projectId/test-cases/:id/estado', validate(estadoTestCaseSchema), testCasesController.updateEstado);

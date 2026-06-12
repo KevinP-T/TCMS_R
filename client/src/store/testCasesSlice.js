@@ -3,6 +3,7 @@ import api from '../services/api';
 export const createTestCasesSlice = (set, get) => ({
   testCases: [],
   selectedTestCase: null,
+  executions: [],
   testCasesFilters: { estado: null, tipo: null, ciclo_id: null },
   loadingTestCases: false,
   errorTestCases: null,
@@ -37,6 +38,15 @@ export const createTestCasesSlice = (set, get) => ({
     }
   },
   
+  fetchExecutions: async (projectId, caseId) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/test-cases/${caseId}/executions`);
+      set({ executions: response.data });
+    } catch (error) {
+      console.error('Error fetching executions:', error);
+    }
+  },
+  
   createTestCase: async (projectId, data) => {
     try {
       const response = await api.post(`/projects/${projectId}/test-cases`, data);
@@ -60,13 +70,24 @@ export const createTestCasesSlice = (set, get) => ({
     }
   },
   
-  updateEstadoTestCase: async (projectId, id, estado) => {
+  updateEstadoTestCase: async (projectId, id, estado, testerId, resultadosObtenidos, observaciones) => {
     try {
-      const response = await api.patch(`/projects/${projectId}/test-cases/${id}/estado`, { estado });
+      const response = await api.patch(`/projects/${projectId}/test-cases/${id}/estado`, { 
+        estado, 
+        tester_id: testerId, 
+        resultados_obtenidos: resultadosObtenidos, 
+        observaciones 
+      });
       set((state) => ({
         testCases: state.testCases.map(tc => tc.id === id ? { ...tc, estado: response.data.estado } : tc),
         selectedTestCase: state.selectedTestCase?.id === id ? { ...state.selectedTestCase, estado: response.data.estado } : state.selectedTestCase
       }));
+      
+      // Recargar historial si corresponde al caso seleccionado actualmente
+      if (get().selectedTestCase?.id === id) {
+        await get().fetchExecutions(projectId, id);
+      }
+      
       return response.data;
     } catch (error) {
       throw error;

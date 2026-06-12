@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Typography, CircularProgress, MenuItem, TextField } from '@mui/material';
 import { useStore } from '../store';
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, AreaChart, Area } from 'recharts';
 import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import GroupIcon from '@mui/icons-material/Group';
+import WarningIcon from '@mui/icons-material/Warning';
 
 // Paleta Neon para Modo Oscuro
 const COLORS_STATUS = {
@@ -23,6 +27,7 @@ const COLORS_SEVERITY = {
 };
 
 const ReportsPage = () => {
+  const navigate = useNavigate();
   const { dashboardData, loadingReports, fetchDashboardData, projects, fetchProjects } = useStore();
   const [selectedProject, setSelectedProject] = useState('general');
 
@@ -57,12 +62,17 @@ const ReportsPage = () => {
   const totalBugs = bugsSeverityData.reduce((acc, curr) => acc + curr.value, 0);
 
   // Custom Tooltip component for Recharts
-  const CustomTooltip = ({ active, payload }) => {
+  const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-slate-900/90 backdrop-blur-md border border-white/10 p-3 rounded-lg shadow-xl">
-          <p className="text-white font-semibold">{`${payload[0].name.toUpperCase()}`}</p>
-          <p className="text-cyan-400 font-bold">{`Cantidad: ${payload[0].value}`}</p>
+          {label && <p className="text-white/60 text-xs mb-1">{label}</p>}
+          {payload.map((item, idx) => (
+            <div key={idx} className="flex justify-between gap-4 text-sm mt-0.5">
+              <span style={{ color: item.color || item.fill }} className="font-semibold">{item.name}:</span>
+              <span className="text-white font-bold">{item.value}</span>
+            </div>
+          ))}
         </div>
       );
     }
@@ -193,6 +203,110 @@ const ReportsPage = () => {
         </div>
 
       </div>
+
+      {/* SECOND CHARTS SECTION (EVOLUTION & TESTERS) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        
+        {/* Chart 3: Evolución Temporal */}
+        <div className="bg-slate-800/40 backdrop-blur-lg border border-white/5 rounded-2xl p-6 h-[450px] shadow-xl flex flex-col">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <TimelineIcon className="text-cyan-400" />
+            <h3 className="text-lg font-semibold text-white">Evolución de Ejecuciones por Día</h3>
+          </div>
+          <div className="flex-grow">
+            {dashboardData.evolutionData && dashboardData.evolutionData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dashboardData.evolutionData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorPasado" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#34d399" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorFallido" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f87171" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#f87171" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                  <XAxis dataKey="fecha" stroke="#94a3b8" tick={{fill: '#94a3b8'}} />
+                  <YAxis allowDecimals={false} stroke="#94a3b8" tick={{fill: '#94a3b8'}} />
+                  <RechartsTooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Area type="monotone" dataKey="pasado" name="Pasados" stroke="#34d399" fillOpacity={1} fill="url(#colorPasado)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="fallido" name="Fallidos" stroke="#f87171" fillOpacity={1} fill="url(#colorFallido)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex justify-center items-center h-full text-slate-500">No hay datos históricos suficientes</div>
+            )}
+          </div>
+        </div>
+
+        {/* Chart 4: Rendimiento Tester */}
+        <div className="bg-slate-800/40 backdrop-blur-lg border border-white/5 rounded-2xl p-6 h-[450px] shadow-xl flex flex-col">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <GroupIcon className="text-purple-400" />
+            <h3 className="text-lg font-semibold text-white">Actividad de Ejecuciones por Tester</h3>
+          </div>
+          <div className="flex-grow">
+            {dashboardData.testerStats && dashboardData.testerStats.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dashboardData.testerStats} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                  <XAxis dataKey="tester_nombre" stroke="#94a3b8" tick={{fill: '#94a3b8'}} />
+                  <YAxis allowDecimals={false} stroke="#94a3b8" tick={{fill: '#94a3b8'}} />
+                  <RechartsTooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar dataKey="pasado" name="Pasados" stackId="a" fill="#34d399" />
+                  <Bar dataKey="fallido" name="Fallidos" stackId="a" fill="#f87171" />
+                  <Bar dataKey="bloqueado" name="Bloqueados" stackId="a" fill="#94a3b8" />
+                  <Bar dataKey="no_ejecutado" name="No Ejecutados" stackId="a" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex justify-center items-center h-full text-slate-500">No hay estadísticas de testers</div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* BOTTOM SECTION: UNSTABLE CASES */}
+      <div className="bg-slate-800/40 backdrop-blur-lg border border-white/5 rounded-2xl p-6 shadow-xl mt-6">
+        <div className="flex items-center gap-2 mb-6">
+          <WarningIcon className="text-rose-400" />
+          <h3 className="text-lg font-semibold text-white">Top 5 Casos de Prueba más Inestables (Fallas)</h3>
+        </div>
+        {dashboardData.unstableTestCases && dashboardData.unstableTestCases.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm text-slate-300">
+              <thead className="bg-slate-900/40 text-xs uppercase tracking-wider text-slate-400">
+                <tr>
+                  <th className="px-4 py-3">ID CP</th>
+                  <th className="px-4 py-3">Descripción</th>
+                  <th className="px-4 py-3 text-right">Fallas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {dashboardData.unstableTestCases.map((tc) => (
+                  <tr 
+                    key={tc.id} 
+                    className="hover:bg-white/5 transition-colors cursor-pointer" 
+                    onClick={() => navigate(`/proyectos/${selectedProject === 'general' ? tc.project_id || 'general' : selectedProject}/casos/${tc.id}`)}
+                  >
+                    <td className="px-4 py-3 font-semibold text-cyan-400">{tc.id_cp || tc.id}</td>
+                    <td className="px-4 py-3">{tc.descripcion}</td>
+                    <td className="px-4 py-3 text-right font-bold text-rose-400">{tc.fallas}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-slate-500">No hay ejecuciones fallidas registradas.</div>
+        )}
+      </div>
+
     </div>
   );
 };

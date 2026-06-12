@@ -32,7 +32,7 @@ const SelectUserPage = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="#f5f5f5">
+    <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh">
       <Typography variant="h3" fontWeight="bold" color="primary" gutterBottom>
         TCMS
       </Typography>

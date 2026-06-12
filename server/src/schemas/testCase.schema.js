@@ -17,7 +17,10 @@ const testCaseSchema = z.object({
 });
 
 const estadoTestCaseSchema = z.object({
-  estado: z.enum(['pendiente', 'pasado', 'fallido', 'bloqueado', 'no_ejecutado'])
+  estado: z.enum(['pendiente', 'pasado', 'fallido', 'bloqueado', 'no_ejecutado']),
+  tester_id: z.string().optional().nullable(),
+  resultados_obtenidos: z.array(z.string()).optional().nullable(),
+  observaciones: z.string().optional().nullable()
 });
 
 module.exports = {

@@ -1,0 +1,17 @@
+{
+  "name": "tcms-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node src/app.js",
+    "start": "NODE_ENV=production node src/app.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "cors": "^2",
+    "express": "^4",
+    "multer": "^1",
+    "uuid": "^9",
+    "zod": "^3"
+  }
+}

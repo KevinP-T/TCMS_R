@@ -213,17 +213,67 @@ exports.deleteEvidencia = async (req, res, next) => {
 exports.importBugs = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const { bug: bugs } = req.body; 
+    const { ciclo: defaultCicloName, bug: bugs } = req.body; 
     const fallbackId = req.headers['x-user-id']; 
 
     if (!bugs || !Array.isArray(bugs)) {
       return res.status(400).json({ error: 'Formato JSON inválido. Se esperaba un arreglo "bug".' });
     }
 
+    // Mapeadores para normalizar valores
+    const mapBugEstado = (estadoRaw) => {
+      if (!estadoRaw) return 'abierto';
+      const val = estadoRaw.toLowerCase().trim();
+      if (['abierto', 'open'].includes(val)) return 'abierto';
+      if (['en progreso', 'en_progreso', 'progress'].includes(val)) return 'en_progreso';
+      if (['pendiente revision', 'pendiente revisión', 'pendiente_revision', 'a revisar', 'revisar'].includes(val)) return 'pendiente_revision';
+      if (['resuelto', 'resolved'].includes(val)) return 'resuelto';
+      if (['cerrado', 'closed'].includes(val)) return 'cerrado';
+      if (['rechazado', 'rejected'].includes(val)) return 'rechazado';
+      return 'abierto';
+    };
+
+    const mapPrioridad = (valRaw) => {
+      if (!valRaw) return 'media';
+      const val = valRaw.toLowerCase().trim();
+      if (['alta', 'high'].includes(val)) return 'alta';
+      if (['media', 'medium'].includes(val)) return 'media';
+      if (['baja', 'low'].includes(val)) return 'baja';
+      return 'media';
+    };
+
+    const mapSeveridad = (valRaw) => {
+      if (!valRaw) return 'media';
+      const val = valRaw.toLowerCase().trim();
+      if (['critica', 'crítica', 'critical'].includes(val)) return 'critica';
+      if (['alta', 'high'].includes(val)) return 'alta';
+      if (['media', 'medium'].includes(val)) return 'media';
+      if (['baja', 'low'].includes(val)) return 'baja';
+      return 'media';
+    };
+
     let insertCount = 0;
+    
+    // Obtener usuarios mapeados por nombre
     const users = await query('SELECT id, nombre FROM users');
     const userMap = {};
     users.forEach(u => userMap[u.nombre.toLowerCase()] = u.id);
+
+    // Obtener y mapear ciclos existentes por nombre para evitar duplicar
+    const existingCiclos = await query('SELECT id, nombre FROM ciclos WHERE project_id = ?', [projectId]);
+    const cicloMap = {};
+    existingCiclos.forEach(c => cicloMap[c.nombre.toLowerCase()] = c.id);
+
+    const getOrCreateCiclo = async (cicloName) => {
+      if (!cicloName) return null;
+      const normalized = cicloName.trim().toLowerCase();
+      if (cicloMap[normalized]) return cicloMap[normalized];
+      
+      const newCicloId = uuidv4();
+      await run('INSERT INTO ciclos (id, project_id, nombre) VALUES (?, ?, ?)', [newCicloId, projectId, cicloName.trim()]);
+      cicloMap[normalized] = newCicloId;
+      return newCicloId;
+    };
 
     for (const b of bugs) {
       const id = uuidv4();
@@ -238,6 +288,22 @@ exports.importBugs = async (req, res, next) => {
         testerId = users[0].id;
       }
 
+      // Obtener o crear ciclo
+      const cicloName = b.ciclo || defaultCicloName;
+      const cicloId = await getOrCreateCiclo(cicloName);
+
+      // Vincular directamente con el caso de prueba si existe
+      let testCaseId = null;
+      if (b.id_cp) {
+        const foundTc = await get(`
+          SELECT id FROM test_cases 
+          WHERE project_id = ? AND (id_cp = ? OR id = ?)
+        `, [projectId, b.id_cp, b.id_cp]);
+        if (foundTc) {
+          testCaseId = foundTc.id;
+        }
+      }
+
       await run(`
         INSERT INTO bugs (
           id, project_id, ciclo_id, test_case_id, id_sistema, id_cu, id_cp, id_paso,
@@ -246,11 +312,11 @@ exports.importBugs = async (req, res, next) => {
           fecha_est_entrega, fecha_real_entrega, fecha_cierre, observaciones
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        id, projectId, null, null, b.id_sistema || null, b.id_cu || null, b.id_cp || null, b.id_paso || null,
+        id, projectId, cicloId, testCaseId, b.id_sistema || null, b.id_cu || null, b.id_cp || null, b.id_paso || null,
         b.titulo || 'Bug importado', b.descripcion || 'Sin descripción',
-        b.estado && ['abierto', 'en_progreso', 'pendiente_revision', 'resuelto', 'cerrado', 'rechazado'].includes(b.estado.toLowerCase()) ? b.estado.toLowerCase() : 'abierto',
-        b.prioridad && ['alta', 'media', 'baja'].includes(b.prioridad.toLowerCase()) ? b.prioridad.toLowerCase() : 'media',
-        b.severidad && ['critica', 'alta', 'media', 'baja'].includes(b.severidad.toLowerCase()) ? b.severidad.toLowerCase() : 'media',
+        mapBugEstado(b.estado),
+        mapPrioridad(b.prioridad),
+        mapSeveridad(b.severidad),
         null,
         b.area_asignada || null, b.descripcion_resolucion || null,
         b.evidencia_link ? JSON.stringify([b.evidencia_link]) : JSON.stringify([]),

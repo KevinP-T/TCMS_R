@@ -73,6 +73,15 @@ const BugTable = ({ projectId }) => {
 
   return (
     <Box>
+      <Box display="flex" justifyContent="flex-end" mb={2}>
+        {usuario?.rol === 'tester' && (
+          <ImportExportButtons 
+            onImport={handleImport} 
+            onExport={handleExport} 
+            isLoading={loadingBugs} 
+          />
+        )}
+      </Box>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={4}>
